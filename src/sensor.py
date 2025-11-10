@@ -1,72 +1,82 @@
-from datetime import datetime, timedelta
-
+from datetime import datetime
 import numpy as np
 
 
 class VisitSensor:
     """
     Simulates a sensor at the entrance of a mall.
-    Takes a mean and a standard deviation
-    and returns the number of visitors that passed through
-    a particular door on a given date
+    Returns the number of visitors per hour.
     """
-    def __init__(self, avg_visit: int, std_visit: int, perc_break: float = 0.015, perc_malfunction: float = 0.035) -> None:
-        """Intialize sensor"""
+
+    def __init__(
+            self,
+            avg_visit: int,
+            std_visit: int,
+            perc_break: float = 0.015,
+            perc_malfunction: float = 0.035
+    ) -> None:
+        """Initialize sensor with daily traffic parameters"""
         self.avg_visit = avg_visit
         self.std_visit = std_visit
         self.perc_break = perc_break
         self.perc_malfunction = perc_malfunction
 
-    def simulate_visit_count(self, business_date: datetime) -> int:
-        """Simulate the number of person detected by the sensor
-        during the day"""
+    def get_visit_count(self, business_date: datetime) -> float:
+        """
+        Return the number of visitors for a specific hour.
+        Returns -1 if store is closed, 0 if sensor is broken.
+        """
+        # Unique seed for this specific hour (data generation)
+        seed_visits = business_date.toordinal() * 24 + business_date.hour
 
-        # Ensure reproducibility of measurements
-        np.random.seed(seed=business_date.toordinal() * 24 + business_date.hour)
+        # Different seed for malfunction check (to decorrelate)
+        seed_malfunction = seed_visits + 1000000
 
-        # Find out which day the business_date corresponds to: Monday = 0, Sunday = 6
-        week_day = business_date.weekday()
-
-
-        visit = np.random.normal(self.avg_visit, self.std_visit)
-        # More traffic on Wednesdays (2), Fridays (4) and Saturdays (5)
-        if week_day == 2:
-            visit *= 1.10
-        if week_day == 4:
-            visit *= 1.25
-        if week_day == 5:
-            visit *= 1.35
-
-        # If the business_date is a sunday the store is closed
-        if week_day == 6:
-            visit = -1
-        hourly_avg = visit / 24
-        # Return an integer
-        return hourly_avg
-    def get_visit_count(self, business_date:datetime) -> int:
-        """return the number of person detected by the sensor
-        during the day"""
-
-        np.random.seed(seed=business_date.toordinal() * 24 + business_date.hour)
+        # Check if sensor is broken
+        np.random.seed(seed=seed_malfunction)
         proba_malfunction = np.random.random()
 
         if proba_malfunction < self.perc_break:
-            print("break")
-            return 0
+            return 0  # Sensor broken
 
-        visit = self.simulate_visit_count(business_date)
+        # Check day of week
+        week_day = business_date.weekday()
 
-        #the sensor can also malfunction
+        # Store closed on Sunday
+        if week_day == 6:
+            return -1
+
+        # Generate visit count with reproducible seed
+        np.random.seed(seed=seed_visits)
+        daily_visit = np.random.normal(self.avg_visit, self.std_visit)
+
+        # Traffic multipliers
+        if week_day == 2:  # Wednesday
+            daily_visit *= 1.10
+        if week_day == 4:  # Friday
+            daily_visit *= 1.25
+        if week_day == 5:  # Saturday
+            daily_visit *= 1.35
+
+        # Convert to hourly
+        hourly_visit = daily_visit / 24
+
+        # Apply malfunction (20% reading)
         if proba_malfunction < self.perc_malfunction:
-            print("malfunction")
-            visit = np.floor(visit * 0.2)
-        return visit
+            hourly_visit *= 0.2
+
+        return max(0, hourly_visit)
+
 
 if __name__ == "__main__":
-    capteur = VisitSensor(1500, 150)
-    print(capteur.simulate_visit_count(datetime(year=2024, month=10, day=25, hour= 14)))
-    init_date = datetime(year=2022, month=10, day=20, hour=8)
-    while init_date < datetime(year=2025, month=1, day=1, hour=18):
-        init_date += timedelta(hours=1)
-        visit_count = capteur.get_visit_count(init_date)
-        print(init_date, visit_count)
+    sensor = VisitSensor(1500, 150)
+
+    # Test specific datetime
+    test_datetime = datetime(2024, 10, 25, 14)
+    print(f"Visits at {test_datetime}: {sensor.get_visit_count(test_datetime):.2f}")
+
+    # Test over several hours
+    for hour in range(8, 18):
+        dt = datetime(2024, 10, 25, hour)
+        visits = sensor.get_visit_count(dt)
+        print(f"{dt.strftime('%Y-%m-%d %H:00')} - Visits: {visits:.2f}")
